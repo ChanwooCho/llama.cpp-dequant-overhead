@@ -2953,7 +2953,7 @@ static thread_ret_t ggml_graph_compute_thread(void * data) {
             tp->ec    = GGML_STATUS_ABORTED;
         }
 
-        // double sync_duration = 0; // 수정
+        double sync_duration = 0; // 수정
         if (node_n + 1 < cgraph->n_nodes) {
             double synch_start_time = omp_get_wtime(); // 수정
             ggml_barrier(state->threadpool);
