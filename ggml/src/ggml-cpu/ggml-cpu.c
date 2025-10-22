@@ -2942,10 +2942,10 @@ static thread_ret_t ggml_graph_compute_thread(void * data) {
     for (int node_n = 0; node_n < cgraph->n_nodes && atomic_load_explicit(&tp->abort, memory_order_relaxed) != node_n; node_n++) {
         struct ggml_tensor * node = cgraph->nodes[node_n];
         
-        // double compute_start_time = omp_get_wtime(); // 수정
+        double compute_start_time = omp_get_wtime(); // 수정
         ggml_compute_forward(&params, node);
-        // double compute_end_time = omp_get_wtime(); // 수정
-        // double compute_duration = (compute_end_time - compute_start_time) * 1000; // 수정
+        double compute_end_time = omp_get_wtime(); // 수정
+        double compute_duration = (compute_end_time - compute_start_time) * 1000; // 수정
 
         if (state->ith == 0 && cplan->abort_callback &&
                 cplan->abort_callback(cplan->abort_callback_data)) {
@@ -2955,32 +2955,32 @@ static thread_ret_t ggml_graph_compute_thread(void * data) {
 
         // double sync_duration = 0; // 수정
         if (node_n + 1 < cgraph->n_nodes) {
-            // double synch_start_time = omp_get_wtime(); // 수정
+            double synch_start_time = omp_get_wtime(); // 수정
             ggml_barrier(state->threadpool);
-            // double synch_end_time = omp_get_wtime(); // 수정
-            // sync_duration = (synch_end_time - synch_start_time) * 1000; // 수정
+            double synch_end_time = omp_get_wtime(); // 수정
+            sync_duration = (synch_end_time - synch_start_time) * 1000; // 수정
         }
 
-        // #pragma omp critical // 수정
-        // {   
-        //     unsigned cpu, node_;
-        //     syscall(__NR_getcpu, &cpu, &node_, NULL);
+        #pragma omp critical // 수정
+        {   
+            unsigned cpu, node_;
+            syscall(__NR_getcpu, &cpu, &node_, NULL);
 
-        //     if (strstr(node->name, "attn_norm") != NULL){
-        //         attn_start_time = omp_get_wtime();
-        //     }
-        //     if (strstr(node->name, "ffn_norm") != NULL){
-        //         ffn_start_time = omp_get_wtime();
-        //         printf("%dth thread, %d core *attention*   = %f ms\n", state->ith, cpu,(ffn_start_time - attn_start_time) * 1000);
-        //     }
-        //     if (strstr(node->name, "l_out") != NULL){
-        //         ffn_end_time = omp_get_wtime();
-        //         printf("%dth thread, %d core *feedforward* = %f ms\n", state->ith, cpu, (ffn_end_time - ffn_start_time) * 1000);
-        //     }
-        //     if (strstr(node->name, "result_output") != NULL){
-        //         printf("%dth thread, %d core *classifier*  = %f ms\n", state->ith, cpu, compute_duration + sync_duration);
-        //     }
-        // }
+            if (strstr(node->name, "attn_norm") != NULL){
+                attn_start_time = omp_get_wtime();
+            }
+            if (strstr(node->name, "ffn_norm") != NULL){
+                ffn_start_time = omp_get_wtime();
+                printf("%dth thread, %d core *attention*   = %f ms\n", state->ith, cpu,(ffn_start_time - attn_start_time) * 1000);
+            }
+            if (strstr(node->name, "l_out") != NULL){
+                ffn_end_time = omp_get_wtime();
+                printf("%dth thread, %d core *feedforward* = %f ms\n", state->ith, cpu, (ffn_end_time - ffn_start_time) * 1000);
+            }
+            if (strstr(node->name, "result_output") != NULL){
+                printf("%dth thread, %d core *classifier*  = %f ms\n", state->ith, cpu, compute_duration + sync_duration);
+            }
+        }
         //수정
         //if (node->op == 27){ // MUL MAT
             // #pragma omp critical
