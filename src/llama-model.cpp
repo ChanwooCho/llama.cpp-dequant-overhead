@@ -532,14 +532,14 @@ void llama_model::load_hparams(llama_model_loader & ml) {
         // gpt-neox n_rot = rotary_pct * (n_embd / n_head)
         // gpt-j n_rot = rotary_dim
 
-        hparams.n_embd_head_k = 64; // 수정
+        hparams.n_embd_head_k = 160; // 수정
         ml.get_key(LLM_KV_ATTENTION_KEY_LENGTH, hparams.n_embd_head_k, false);
 
-        hparams.n_embd_head_v = 64; // 수정
+        hparams.n_embd_head_v = 160; // 수정
         ml.get_key(LLM_KV_ATTENTION_VALUE_LENGTH, hparams.n_embd_head_v, false);
 
         // sanity check for n_rot (optional)
-        hparams.n_rot = 64; // 수정
+        hparams.n_rot = 160; // 수정
 
         ml.get_key(LLM_KV_ROPE_DIMENSION_COUNT, hparams.n_rot, false);
 
