@@ -308,8 +308,8 @@ void dequantize_row_q4_0(const block_q4_0 * GGML_RESTRICT x, float * GGML_RESTRI
             const int x0 = (x[i].qs[j] & 0x0F) - 8;
             const int x1 = (x[i].qs[j] >>   4) - 8;
 
-            y[i*qk + j + 0   ] = GGML_FP32_TO_FP16(x0*d);
-            y[i*qk + j + qk/2] = GGML_FP32_TO_FP16(x1*d);
+            y[i*qk + j + 0   ] = x0*d;
+            y[i*qk + j + qk/2] = x1*d;
         }
     }
 }
