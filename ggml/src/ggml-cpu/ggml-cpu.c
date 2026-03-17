@@ -1297,7 +1297,7 @@ UseGgmlGemm1:;
         
         // dequant
         float * src0_f32 = (float *) malloc(
-            ne00 * ne01 * ne02 * ne03 * sizeof(float)
+            ne00 * ne01 * ne02 * ne03 * sizeof(ggml_fp16_t )
         );
         double compute_start_time = omp_get_wtime();
         for (int64_t i03 = 0; i03 < ne03; ++i03) {

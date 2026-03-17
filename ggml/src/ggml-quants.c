@@ -247,7 +247,69 @@ void quantize_row_q8_1_ref(const float * GGML_RESTRICT x, block_q8_1 * GGML_REST
     }
 }
 
-void dequantize_row_q4_0_neon(const block_q4_0 * x, float * y, int64_t k) {
+void dequantize_row_q4_0_neon_fp16(const block_q4_0 * x, ggml_fp16_t * y, int64_t k) {
+    const int qk = QK4_0;
+    const int nb = k / qk;
+
+    for (int i = 0; i < nb; i++) {
+        const float d = GGML_FP16_TO_FP32(x[i].d);
+        const uint8x16_t v = vld1q_u8(x[i].qs);
+
+        // nibble 분리
+        const uint8x16_t lo = vandq_u8(v, vdupq_n_u8(0x0F));
+        const uint8x16_t hi = vshrq_n_u8(v, 4);
+
+        // [0,15] -> [-8,7]
+        const int8x16_t lo_s8 = vsubq_s8(vreinterpretq_s8_u8(lo), vdupq_n_s8(8));
+        const int8x16_t hi_s8 = vsubq_s8(vreinterpretq_s8_u8(hi), vdupq_n_s8(8));
+
+        // int8 -> int16
+        const int16x8_t lo_l = vmovl_s8(vget_low_s8(lo_s8));
+        const int16x8_t lo_h = vmovl_s8(vget_high_s8(lo_s8));
+        const int16x8_t hi_l = vmovl_s8(vget_low_s8(hi_s8));
+        const int16x8_t hi_h = vmovl_s8(vget_high_s8(hi_s8));
+
+        const float32x4_t d4 = vdupq_n_f32(d);
+
+        // lo 0~15
+        vst1_f16(
+            (float16_t *)&y[i*qk + 0],
+            vcvt_f16_f32(vmulq_f32(vcvtq_f32_s32(vmovl_s16(vget_low_s16(lo_l))), d4))
+        );
+        vst1_f16(
+            (float16_t *)&y[i*qk + 4],
+            vcvt_f16_f32(vmulq_f32(vcvtq_f32_s32(vmovl_s16(vget_high_s16(lo_l))), d4))
+        );
+        vst1_f16(
+            (float16_t *)&y[i*qk + 8],
+            vcvt_f16_f32(vmulq_f32(vcvtq_f32_s32(vmovl_s16(vget_low_s16(lo_h))), d4))
+        );
+        vst1_f16(
+            (float16_t *)&y[i*qk + 12],
+            vcvt_f16_f32(vmulq_f32(vcvtq_f32_s32(vmovl_s16(vget_high_s16(lo_h))), d4))
+        );
+
+        // hi 16~31
+        vst1_f16(
+            (float16_t *)&y[i*qk + 16],
+            vcvt_f16_f32(vmulq_f32(vcvtq_f32_s32(vmovl_s16(vget_low_s16(hi_l))), d4))
+        );
+        vst1_f16(
+            (float16_t *)&y[i*qk + 20],
+            vcvt_f16_f32(vmulq_f32(vcvtq_f32_s32(vmovl_s16(vget_high_s16(hi_l))), d4))
+        );
+        vst1_f16(
+            (float16_t *)&y[i*qk + 24],
+            vcvt_f16_f32(vmulq_f32(vcvtq_f32_s32(vmovl_s16(vget_low_s16(hi_h))), d4))
+        );
+        vst1_f16(
+            (float16_t *)&y[i*qk + 28],
+            vcvt_f16_f32(vmulq_f32(vcvtq_f32_s32(vmovl_s16(vget_high_s16(hi_h))), d4))
+        );
+    }
+}
+
+void dequantize_row_q4_0_neon_fp32(const block_q4_0 * x, float * y, int64_t k) {
     const int qk = QK4_0;
     const int nb = k / qk;
 
