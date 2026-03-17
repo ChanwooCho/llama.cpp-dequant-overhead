@@ -3596,6 +3596,7 @@ static void ggml_compute_forward_swiglu(
         const ggml_compute_params * params,
         ggml_tensor * dst) {
 
+    // printf("swiglu\n"); // 수정
     const ggml_tensor * src0 = dst->src[0];
 
     switch (src0->type) {

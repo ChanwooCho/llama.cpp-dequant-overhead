@@ -40,6 +40,7 @@
 #include <sched.h> // 수정
 #include <unistd.h> // 수정
 #include <sys/syscall.h> // 수정
+#include "ggml-quants.h" // 수정
 
 #ifdef GGML_USE_OPENMP
 #include <omp.h>
@@ -1212,6 +1213,7 @@ void ggml_compute_forward_mul_mat(
     ggml_from_float_t        const from_float           = type_traits_cpu[vec_dot_type].from_float;
     int64_t                  const vec_dot_num_rows     = type_traits_cpu[src0->type].nrows;
 
+
     GGML_ASSERT(ne0 == ne01);
     GGML_ASSERT(ne1 == ne11);
     GGML_ASSERT(ne2 == ne12);
@@ -1292,6 +1294,41 @@ UseGgmlGemm1:;
                 }
             }
         }
+        
+        // dequant
+        float * src0_f32 = (float *) malloc(
+            ne00 * ne01 * ne02 * ne03 * sizeof(float)
+        );
+        double compute_start_time = omp_get_wtime();
+        for (int64_t i03 = 0; i03 < ne03; ++i03) {
+            for (int64_t i02 = 0; i02 < ne02; ++i02) {
+                for (int64_t i01 = 0; i01 < ne01; ++i01) {
+                    const size_t bs = ggml_blck_size(GGML_TYPE_Q4_0);
+
+                    const int64_t ne00_block_start = (ith * (ne00 / bs)) / nth;
+                    const int64_t ne00_block_end   = ((ith + 1) * (ne00 / bs)) / nth;
+
+                    const block_q4_0 * src =
+                        (const block_q4_0 *)((char *) src0->data +
+                                            i03*nb03 + i02*nb02 + i01*nb01 +
+                                            ne00_block_start*nb00);
+
+                    float * dst =
+                        (float *)((char *) src0_f32 +
+                                i03*nbw3 + i02*nbw2 + i01*nbw1 +
+                                ne00_block_start*bs*nbw0);
+
+                    const int64_t n = (ne00_block_end - ne00_block_start) * bs;
+
+                    dequantize_row_q4_0(src, dst, n);
+                }
+            }
+        }
+        double compute_end_time = omp_get_wtime();
+        double compute_duration = (compute_end_time - compute_start_time) * 1000; 
+        printf("thread %dth dequant overhead = %f ms\n", ith, compute_duration);
+        free(src0_f32);
+
     #endif
     }
 
@@ -1306,6 +1343,11 @@ UseGgmlGemm1:;
     if (src1->type != vec_dot_type) {
         const void* wdata = (src1->type == vec_dot_type) ? src1->data : params->wdata;
         const size_t row_size = ggml_row_size(vec_dot_type, ne10);
+        
+        // 수정
+        // printf("vec_dot_type=%d\n", vec_dot_type);
+        // printf("ne00=%d, ne01=%d, ne02=%d, ne03=%d\n", ne00, ne01, ne02, ne03);
+        // printf("ne10=%d, row_size=%d\n", ne10, row_size);
 
         for (int64_t i13 = 0; i13 < ne13; i13++)
             for (int64_t i12 = 0; i12 < ne12; i12++)
@@ -1477,6 +1519,7 @@ static void ggml_compute_forward_mul_mat_id(
     const struct ggml_tensor * src0 = dst->src[0];
     const struct ggml_tensor * src1 = dst->src[1];
     const struct ggml_tensor * ids = dst->src[2];
+    
 
     GGML_TENSOR_BINARY_OP_LOCALS
 
@@ -1744,6 +1787,105 @@ const char *ggml_op_name(enum ggml_op op) { // 수정
     }
 }
 
+// 수정 추가
+static const char * GGML_OP_NAME[GGML_OP_COUNT] = {
+    "NONE",
+
+    "DUP",
+    "ADD",
+    "ADD1",
+    "ACC",
+    "SUB",
+    "MUL",
+    "DIV",
+    "SQR",
+    "SQRT",
+    "LOG",
+    "SIN",
+    "COS",
+    "SUM",
+    "SUM_ROWS",
+    "MEAN",
+    "ARGMAX",
+    "COUNT_EQUAL",
+    "REPEAT",
+    "REPEAT_BACK",
+    "CONCAT",
+    "SILU_BACK",
+    "NORM",
+    "RMS_NORM",
+    "RMS_NORM_BACK",
+    "GROUP_NORM",
+    "L2_NORM",
+
+    "MUL_MAT",
+    "MUL_MAT_ID",
+    "OUT_PROD",
+
+    "SCALE",
+    "SET",
+    "CPY",
+    "CONT",
+    "RESHAPE",
+    "VIEW",
+    "PERMUTE",
+    "TRANSPOSE",
+    "GET_ROWS",
+    "GET_ROWS_BACK",
+    "SET_ROWS",
+    "DIAG",
+    "DIAG_MASK_INF",
+    "DIAG_MASK_ZERO",
+    "SOFT_MAX",
+    "SOFT_MAX_BACK",
+    "ROPE",
+    "ROPE_BACK",
+    "CLAMP",
+    "CONV_TRANSPOSE_1D",
+    "IM2COL",
+    "IM2COL_BACK",
+    "CONV_2D",
+    "CONV_2D_DW",
+    "CONV_TRANSPOSE_2D",
+    "POOL_1D",
+    "POOL_2D",
+    "POOL_2D_BACK",
+    "UPSCALE",
+    "PAD",
+    "PAD_REFLECT_1D",
+    "ROLL",
+    "ARANGE",
+    "TIMESTEP_EMBEDDING",
+    "ARGSORT",
+    "LEAKY_RELU",
+
+    "FLASH_ATTN_EXT",
+    "FLASH_ATTN_BACK",
+    "SSM_CONV",
+    "SSM_SCAN",
+    "WIN_PART",
+    "WIN_UNPART",
+    "GET_REL_POS",
+    "ADD_REL_POS",
+    "RWKV_WKV6",
+    "GATED_LINEAR_ATTN",
+    "RWKV_WKV7",
+
+    "UNARY",
+
+    "MAP_CUSTOM1",
+    "MAP_CUSTOM2",
+    "MAP_CUSTOM3",
+
+    "CUSTOM",
+
+    "CROSS_ENTROPY_LOSS",
+    "CROSS_ENTROPY_LOSS_BACK",
+    "OPT_STEP_ADAMW",
+
+    "GLU",
+};
+
 static void ggml_compute_forward(struct ggml_compute_params * params, struct ggml_tensor * tensor) {
     GGML_ASSERT(params);
 
@@ -1752,10 +1894,10 @@ static void ggml_compute_forward(struct ggml_compute_params * params, struct ggm
     }
 
     // extra_buffer op?
-    if (ggml_cpu_extra_compute_forward(params, tensor)) {
-        return;
-    }
-
+    // if (ggml_cpu_extra_compute_forward(params, tensor)) {
+    //     printf("tensor name = %s, tensor code = %d\n", GGML_OP_NAME[tensor->op], tensor->op);
+    //     return;
+    // }
     switch (tensor->op) {
         case GGML_OP_DUP:
             {
@@ -1778,7 +1920,7 @@ static void ggml_compute_forward(struct ggml_compute_params * params, struct ggm
                 ggml_compute_forward_sub(params, tensor);
             } break;
         case GGML_OP_MUL:
-            {
+            {   
                 ggml_compute_forward_mul(params, tensor);
             } break;
         case GGML_OP_DIV:

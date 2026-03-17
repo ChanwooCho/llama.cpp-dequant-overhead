@@ -12,6 +12,7 @@
 #include <float.h>
 #include <stdlib.h> // for qsort
 #include <stdio.h>  // for GGML_ASSERT
+#include <arm_neon.h>
 
 #define GROUP_MAX_EPS 1e-15f
 #define GROUP_MAX_EPS_IQ3_XXS 1e-8f
@@ -243,6 +244,74 @@ void quantize_row_q8_1_ref(const float * GGML_RESTRICT x, block_q8_1 * GGML_REST
         }
 
         y[i].s = GGML_FP32_TO_FP16(sum*d);
+    }
+}
+
+void dequantize_row_q4_0_neon(const block_q4_0 * x, float * y, int64_t k) {
+    const int qk = QK4_0;
+    const int nb = k / qk;
+
+    for (int i = 0; i < nb; i++) {
+        const float d = GGML_FP16_TO_FP32(x[i].d);
+        const uint8_t * qs = x[i].qs;
+
+        // load 16 bytes
+        uint8x16_t v = vld1q_u8(qs);
+
+        // lower nibble
+        uint8x16_t lo = vandq_u8(v, vdupq_n_u8(0x0F));
+
+        // upper nibble
+        uint8x16_t hi = vshrq_n_u8(v, 4);
+
+        // convert to int8 (subtract 8)
+        int8x16_t lo_s8 = vreinterpretq_s8_u8(lo);
+        int8x16_t hi_s8 = vreinterpretq_s8_u8(hi);
+
+        lo_s8 = vsubq_s8(lo_s8, vdupq_n_s8(8));
+        hi_s8 = vsubq_s8(hi_s8, vdupq_n_s8(8));
+
+        // split to 2x int16
+        int16x8_t lo_low  = vmovl_s8(vget_low_s8(lo_s8));
+        int16x8_t lo_high = vmovl_s8(vget_high_s8(lo_s8));
+
+        int16x8_t hi_low  = vmovl_s8(vget_low_s8(hi_s8));
+        int16x8_t hi_high = vmovl_s8(vget_high_s8(hi_s8));
+
+        // int → float
+        float32x4_t f0 = vcvtq_f32_s32(vmovl_s16(vget_low_s16(lo_low)));
+        float32x4_t f1 = vcvtq_f32_s32(vmovl_s16(vget_high_s16(lo_low)));
+        float32x4_t f2 = vcvtq_f32_s32(vmovl_s16(vget_low_s16(lo_high)));
+        float32x4_t f3 = vcvtq_f32_s32(vmovl_s16(vget_high_s16(lo_high)));
+
+        float32x4_t f4 = vcvtq_f32_s32(vmovl_s16(vget_low_s16(hi_low)));
+        float32x4_t f5 = vcvtq_f32_s32(vmovl_s16(vget_high_s16(hi_low)));
+        float32x4_t f6 = vcvtq_f32_s32(vmovl_s16(vget_low_s16(hi_high)));
+        float32x4_t f7 = vcvtq_f32_s32(vmovl_s16(vget_high_s16(hi_high)));
+
+        float32x4_t vd = vdupq_n_f32(d);
+
+        // multiply
+        f0 = vmulq_f32(f0, vd);
+        f1 = vmulq_f32(f1, vd);
+        f2 = vmulq_f32(f2, vd);
+        f3 = vmulq_f32(f3, vd);
+
+        f4 = vmulq_f32(f4, vd);
+        f5 = vmulq_f32(f5, vd);
+        f6 = vmulq_f32(f6, vd);
+        f7 = vmulq_f32(f7, vd);
+
+        // store (layout 동일하게 유지)
+        vst1q_f32(y + i*qk +  0, f0);
+        vst1q_f32(y + i*qk +  4, f1);
+        vst1q_f32(y + i*qk +  8, f2);
+        vst1q_f32(y + i*qk + 12, f3);
+
+        vst1q_f32(y + i*qk + 16, f4);
+        vst1q_f32(y + i*qk + 20, f5);
+        vst1q_f32(y + i*qk + 24, f6);
+        vst1q_f32(y + i*qk + 28, f7);
     }
 }
 
