@@ -1296,9 +1296,10 @@ UseGgmlGemm1:;
         }
         
         // dequant
-        float * src0_f32 = (float *) malloc(
-            ne00 * ne01 * ne02 * ne03 * sizeof(float)
+        float * src0_f16 = (float *) malloc(
+            ne00 * ne01 * ne02 * ne03 * sizeof(ggml_fp16_t)
         );
+
         double compute_start_time = omp_get_wtime();
         for (int64_t i03 = 0; i03 < ne03; ++i03) {
             for (int64_t i02 = 0; i02 < ne02; ++i02) {
@@ -1314,7 +1315,7 @@ UseGgmlGemm1:;
                                             ne00_block_start*nb00);
 
                     float * dst =
-                        (float *)((char *) src0_f32 +
+                        (float *)((char *) src0_f16 +
                                 i03*nbw3 + i02*nbw2 + i01*nbw1 +
                                 ne00_block_start*bs*nbw0);
 
